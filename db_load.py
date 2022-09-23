@@ -4,6 +4,8 @@ import os
 import pandas as pd
 from sqlalchemy import create_engine
 import sqlalchemy as db
+from datetime import datetime
+import urllib
 load_dotenv()
 
 host = os.getenv('HOST')
@@ -38,29 +40,23 @@ def execute_query(conn: str, query: str, commit: bool):
     pass
 
 
-test_query = """
-select [name] as database_name,
-    database_id,
-    create_date
-from sys.databases
-order by name
-"""
+params = urllib.parse.quote_plus\
+    (r'DRIVER={SQL Server};'
+    r'SERVER=tcp:stromtiger.database.windows.net;'
+    r'DATABASE=backenddb;'
+    r'UID=tigeradmin;'
+    r'PWD=Supertigerpassword$123;'
+    r'Encrypt=yes;'
+    r'TrustServerCertificate=no;'
+    r'Connection Timeout=30;')
+conn_str = 'mssql+pyodbc:///?odbc_connect={}'.format(params)
+cnx = create_engine(conn_str, echo=True)
 
-#execute_query(engine=cnxn, query=test_query)
-
-#engine = create_engine('jdbc:sqlserver://stromtiger.database.windows.net:1433;database=backenddb')
-#engine.connect()
-#metadata = db.MetaData()
-
-data = pd.read_csv('stromverbrauch_stadtwerke.csv', sep=',')
-
-for id, row in data.iterrows():
-    date = row['Zeit']
-    kw = row['kW']
-    status = row['Status']
-    kunde = row['Kunde']
-    # create string
-    raw_query = f"INSERT INTO stromlastdaten(zeit, kw, status, kundeId) VALUES ('{date}', {kw}, '{status}', {kunde})"
-    print(f"Progrss: {id/len(data)}")
-    # run query
-    execute_query(conn=conn_str, query=raw_query, commit=True)
+if __name__ == '__main__':
+    data = pd.read_csv('stromverbrauch_stadtwerke.csv', sep=',')
+    start = datetime.now()
+    print(start)
+    print('Upload in progress..')
+    data.to_sql(name='stromlastdaten', con=cnx, if_exists='replace', index=False, chunksize=10000)
+    print('done')
+    print(round((datetime.now() - start).total_seconds()))

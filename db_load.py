@@ -53,7 +53,7 @@ conn_str = 'mssql+pyodbc:///?odbc_connect={}'.format(params)
 cnx = create_engine(conn_str, echo=True)
 
 if __name__ == '__main__':
-    data = pd.read_csv('stromverbrauch_stadtwerke.csv', sep=',')
+    data = pd.read_csv('excel_files/stromverbrauch_stadtwerke.csv', sep=',')
     start = datetime.now()
     print(start)
     print('Upload in progress..')

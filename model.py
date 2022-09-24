@@ -6,6 +6,19 @@ from sqlalchemy import create_engine
 from dotenv import load_dotenv
 import urllib
 import psycopg2
+import time
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import LSTM
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.compose import ColumnTransformer
+from keras import layers
+import keras
 
 
 class MLModel:
@@ -113,12 +126,69 @@ class MLModel:
         return data[['zeit', 'kw', 'status', 'verbraucherid', 'Weekday', 'isWeekend', 'IstFeiertag', 'IstFerientag']]
 
     def train_model(self):
-        # get holidays
-        # feature extraction
-        # train model
-        # save trained model
-        pass
 
-    def make_predictions(self):
-        # model.predict
-        pass
+        def _create_dataset(dataset, look_back=1):
+            dataX, dataY = [], []
+            for i in range(len(dataset) - look_back - 1):
+                a = dataset[i:(i + look_back), :]
+                dataX.append(a)
+                dataY.append(dataset[i + look_back, 2])
+            return np.array(dataX), np.array(dataY)
+
+        # feature extraction
+        preprocessed_data = self._feature_extraction(table_name='stromlastdaten',
+                                        date_col='zeit',
+                                        holiday_tables=['feiertage2020nrw',
+                                                        'feiertage2021nrw',
+                                                        'feiertage2022nrw'])
+        preprocessed_data.drop(['zeit', 'status', 'Weekday'], axis=1, inplace=True)
+        # get unique customerIds
+        customers = preprocessed_data['verbraucherid'].unique()
+        # create df for for predictions
+        preds = pd.DataFrame(columns=customers)
+
+        print('Start training')
+        for customer in customers:
+            print(f'Start training for customer {customer}')
+            data = preprocessed_data[preprocessed_data['verbraucherid'] == customer].drop('verbraucherid', axis=1)
+
+            # normalize the dataset
+            scaler = MinMaxScaler(feature_range=(0, 1))
+            dataset = scaler.fit_transform(data)
+
+            # split into train and test sets
+            train_size = int(len(dataset) * 0.67)
+            test_size = len(dataset) - train_size
+            train, test = dataset[0:train_size, :], dataset[train_size:len(dataset), :]
+
+            # reshape into X=t and Y=t+1
+            look_back = 1
+            trainX, trainY = _create_dataset(train, look_back)
+            testX, testY = _create_dataset(test, look_back)
+
+            # reshape input to be  [samples, time steps, features]
+            trainX = np.reshape(trainX, (trainX.shape[0], look_back, 4))
+            testX = np.reshape(testX, (testX.shape[0], look_back, 4))
+
+            # create and train model
+            model = keras.Sequential()
+            model.add(layers.LSTM(100, return_sequences=True, input_shape=(trainX.shape[1], 4)))
+            model.add(layers.LSTM(100, return_sequences=False))
+            model.add(layers.Dense(25))
+            model.add(layers.Dense(1))
+
+            model.compile(optimizer='adam', loss='mean_squared_error')
+            model.fit(trainX, trainY, batch_size=1, epochs=3)
+
+            # make predictions
+            train_predict = model.predict(trainX)
+            test_predict = model.predict(testX)
+
+            # save predictions
+            preds[customer] = test_predict
+
+        return preds
+
+    def export_predictions(self, predictions: pd.DataFrame):
+        predictions['sum'] = predictions.sum(axis=1)
+        return predictions

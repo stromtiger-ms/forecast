@@ -3,3 +3,4 @@ venv/
 .idea/
 notebooks/
 excel_files
+__pycache__

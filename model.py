@@ -185,7 +185,7 @@ class MLModel:
             test_predict = model.predict(testX)
 
             # save predictions
-            preds[customer] = test_predict
+            preds[str(customer)] = test_predict.flatten()
 
         return preds
 
